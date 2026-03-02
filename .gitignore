@@ -32,3 +32,7 @@ htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Jupyter / dev notebooks (keep local)
+notebooks/
+.ipynb_checkpoints/
