@@ -50,6 +50,18 @@ class Summary:
 
     def get(self, key: str) -> tuple[Any, Any, Any, Any, Any] | None:
         return self.parsed.get(key)
+    
+@dataclass(frozen=True)
+class Sensors:
+
+    """
+    Saves raw "Contributing Sensors" section
+    DOES NOT PROPERLY PARSE SENSORS SECTION FOR MATCHING
+    If you want to make a match() function, you will need to parse the sensors section
+    """
+
+    raw: str
+    parsed: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 
@@ -107,6 +119,7 @@ class LI2200File:
     metadata: Metadata
     results: Results
     summary: Summary
+    sensors: Sensors
     observations: Observations   # Observations is a tuple of Records
     trailing: list[str] = field(default_factory=list)  # blank lines, footer, etc.
 
