@@ -78,6 +78,14 @@ class Observations:
     raw: str
     records: tuple[Record, ...] = ()
 
+    def filter(self, predicate: Callable[[Record], bool]) -> "Observations":
+        records = tuple(record for record in self.records if predicate(record))
+        return replace(self, raw="".join(record.raw for record in records), records=records)
+
+    def nth(self, predicate: Callable[[Record], bool], n: int) -> Record:
+        records = tuple(record for record in self.records if predicate(record))
+        return records[n-1]
+
     def above(self) -> "Observations":
         return self.filter(lambda r: r.record_type == "A")
     
