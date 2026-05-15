@@ -228,4 +228,155 @@ def read_li2200(in_path: Path):
     )
 
 
-print(read_li2200('/Users/irwright/Desktop/li2200tools test/raw/C8-2.TXT').header)
+def unparse_header(header: Header) -> str:
+    """
+    Convert a Header dataclass back into one LI-2200 header line.
+    Output string includes all changes made to dataclass after initial reading
+    """
+    if header.value is None:
+        return f"{header.key}\n"
+    return f"{header.key}\t{header.value}\n"
+
+
+def unparse_meta(meta: Metadata) -> str:
+    """
+    Convert a Metadata dataclass back into LI-2200 file string format
+    Output string includes all changes made to dataclass after initial reading
+    """
+    if meta.parsed is None:
+        raise ValueError("Metadata.parsed is empty; cannot unparse metadata")
+    
+    unp = ""
+    for k in meta.parsed:
+        unp += f"{k}\t{meta.parsed[k]}\n"
+
+    return unp
+
+
+def unparse_res(res: Results) -> str:
+    """
+    Convert a Results dataclass back into LI-2200 file string format
+    Output string includes all changes made to dataclass after initial reading
+    """
+    if res.parsed is None:
+        raise ValueError("Results.parsed is empty; cannot unparse Results")
+    
+    unp = ""
+    for k in res.parsed:
+        unp += f"{k}\t{res.parsed[k]}\n"
+
+    return unp
+
+
+def unparse_summ(summ: Summary) -> str:
+    """
+    Convert a Summary dataclass back into LI-2200 file string format
+    Output string includes all changes made to dataclass after initial reading
+    """
+    if summ.parsed is None:
+        raise ValueError("Summary.parsed is empty; cannot unparse file summary")
+    
+    unp = ""
+    for k in summ.parsed:
+        unp += f"{k}\t{summ.parsed[k][0]}\t{summ.parsed[k][1]}\t{summ.parsed[k][2]}\t{summ.parsed[k][3]}\t{summ.parsed[k][4]}\n"
+
+    return unp
+
+
+def unparse_sens(sens: Sensors) -> str:
+    """
+    Convert a Sensors dataclass back into LI-2200 file string format.
+    """
+    if sens.parsed is None:
+        raise ValueError("Sensors.parsed is empty; cannot unparse sensors")
+
+    lines = ["### Contributing Sensors\n"]
+    for code, sensor in sens.parsed.items():
+        model = sensor.get("model")
+        values = sensor.get("values", ())
+        parts = ["SENSOR", code, model, *values]
+        lines.append("\t".join(str(part) for part in parts) + "\n")
+
+    return "".join(lines)
+
+
+def unparse_record(record: Record) -> str:
+    """
+    Convert one Record dataclass back into one LI-2200 observation line.
+
+    If the original raw line is available, preserve it exactly. This keeps
+    filtered files from changing numeric formatting such as trailing zeroes.
+    """
+    if record.raw:
+        return record.raw if record.raw.endswith("\n") else f"{record.raw}\n"
+
+    if record.parsed is None:
+        raise ValueError("Record.parsed is empty; cannot unparse record")
+
+    parsed = record.parsed
+    rtype = record.record_type
+
+    if rtype in {"A", "B"}:
+        parts = [rtype, parsed["seq"], parsed["dt"], parsed["sensor"], *parsed["rings"]]
+    elif rtype == "G":
+        parts = [
+            rtype,
+            parsed["seq"],
+            parsed["dt"],
+            parsed["gps_id"],
+            parsed["lat"],
+            parsed["lon"],
+            parsed["alt"],
+            parsed["gpsnum"],
+            parsed["hdop"],
+            parsed["fix_dt"],
+        ]
+    elif rtype == "L":
+        parts = [rtype, parsed["seq"], parsed["dt"], parsed["sensor"], parsed["value"]]
+    else:
+        parts = [
+            rtype,
+            parsed["seq"],
+            parsed["dt"],
+            parsed["sensor"],
+            *parsed.get("tokens", ()),
+        ]
+
+    return "\t".join(str(part) for part in parts) + "\n"
+
+
+def unparse_obs(obs: Observations) -> str:
+    """
+    Convert an Observations dataclass back into LI-2200 file string format.
+    """
+    lines = ["### Observations\n"]
+    lines.extend(unparse_record(record) for record in obs.records)
+    return "".join(lines)
+
+
+def unparse_li2200(file: LI2200File) -> str:
+    """
+    Convert a whole LI2200File object back into LI-2200 text format.
+    """
+    return "".join(
+        [
+            unparse_header(file.header),
+            unparse_meta(file.metadata),
+            unparse_res(file.results),
+            unparse_summ(file.summary),
+            "\n",
+            unparse_sens(file.sensors),
+            "\n\n",
+            unparse_obs(file.observations),
+            "".join(file.trailing),
+        ]
+    )
+
+
+def write_li2200(file: LI2200File, out_path: Path) -> Path:
+    """
+    Write a LI2200File object to a text file and return the output path.
+    """
+    out_path = Path(out_path)
+    out_path.write_text(unparse_li2200(file))
+    return out_path
