@@ -203,8 +203,8 @@ def read_li2200(in_path: Path):
     header = head(text_lines[0])
     metadata = meta(text_lines[1:i_lai])
     results = res(text_lines[i_lai:i_mask])
-    summary = summ(text_lines[i_mask:i_gaps])
-    sensors = sens(text_lines[i_gaps:i_sensors])
+    summary = summ(text_lines[i_mask:i_gaps + 1])
+    sensors = sens(text_lines[i_sensors:i_obs])
     observations = obs(text_lines[i_obs:])
 
     trailing = []
