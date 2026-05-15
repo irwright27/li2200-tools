@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
-RecordType = Literal["A", "B"]  # extend if LI-2200 has more types
+RecordType = Literal["A", "B", "G", "L"]  # LI-2200 observation record types currently parsed by io.rec
 
 
 @dataclass(frozen=True)
