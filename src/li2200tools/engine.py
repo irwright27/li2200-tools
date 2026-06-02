@@ -5,7 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import re
 from typing import Iterable, Literal, Union, cast
 
-from li2200tools.models import LI2200File, Observations, Record, RecordType
+from li2200tools.models import Header, LI2200File, Observations, Record, RecordType
 
 
 NumberSpec = Union[int, str, range, Iterable[Union[int, str, range]]]
@@ -73,6 +73,26 @@ def _expand_numbers(spec: NumberSpec | None) -> set[int] | None:
 def _record_logical_numbers(records: tuple[Record, ...], record_type: RecordType) -> dict[int, Record]:
     typed_records = (record for record in records if record.record_type == record_type)
     return {i: record for i, record in enumerate(typed_records, start=1)}
+
+
+def rename_file(file: LI2200File, name: str) -> LI2200File:
+    """
+    Change the LAI_FILE line in the file header.
+
+    Args:
+        file: The input file in LI2200File object format.
+        name: New LAI_FILE name to write in the header.
+
+    Returns:
+        A new LI2200File with the header renamed.
+    """
+    return file.copy(
+        header=Header(
+            raw="",
+            key=file.header.key,
+            value=name,
+        )
+    )
 
 
 def _as_record_spec_tuple(records: RecordSpec | None) -> tuple[RecordSelector, ...]:

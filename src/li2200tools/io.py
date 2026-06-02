@@ -373,10 +373,21 @@ def unparse_li2200(file: LI2200File) -> str:
     )
 
 
-def write_li2200(file: LI2200File, out_path: Path) -> Path:
+def write_li2200(file: LI2200File, out_path: Path, header_match_filename: bool = False) -> Path:
     """
     Write a LI2200File object to a text file and return the output path.
+
+    Args:
+        file: The input file in LI2200File object format.
+        out_path: Path where the LI2200 file should be written.
+        header_match_filename: If True, update the LAI_FILE header value to
+            match out_path's filename without the file extension.
     """
     out_path = Path(out_path)
+    if header_match_filename:
+        from li2200tools.engine import rename_file
+
+        file = rename_file(file, out_path.stem)
+
     out_path.write_text(unparse_li2200(file))
     return out_path
