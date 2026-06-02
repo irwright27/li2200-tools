@@ -78,6 +78,17 @@ class Observations:
     raw: str
     records: tuple[Record, ...] = ()
 
+    @property
+    def parsed(self) -> list[dict[str, Any]]:
+        rows = []
+        for record in self.records:
+            row = {"record_type": record.record_type, **record.parsed}
+            rings = row.pop("rings", None)
+            if rings is not None:
+                row.update({f"ring{i}": value for i, value in enumerate(rings, start=1)})
+            rows.append(row)
+        return rows
+
     def filter(self, predicate: Callable[[Record], bool]) -> "Observations":
         records = tuple(record for record in self.records if predicate(record))
         return replace(self, raw="".join(record.raw for record in records), records=records)
