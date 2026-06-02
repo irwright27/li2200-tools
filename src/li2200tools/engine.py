@@ -298,18 +298,31 @@ def filter_file(
 
     Filtering order:
       1. dt narrows the available observations first.
-      2. rec_type and seq filter the remaining observations.
+      2. records, rec_type, and seq filter the remaining observations.
       3. nA/nB select 1-based logical A/B records from the dt-filtered set.
 
+    Use records for compact selectors like "A2", "B5", "A1:A3", or "B5:B6".
     nA and nB override seq for their respective record types.
-    """
-    li = path_or_file if isinstance(path_or_file, LI2200File) else read_li2200(Path(path_or_file))
 
-    records = li.observations.records
+    Args:
+        file: The input file in LI2200File object format.
+        records: Records to keep. Use Record objects directly, single selectors
+            like "A2" or "B5", or ranges like "A1:A3" and "B5:B6".
+        rec_type: Record type or types to keep, such as "A" or ["A", "B"].
+        nA: 1-based logical A record numbers to keep.
+        nB: 1-based logical B record numbers to keep.
+        dt: Optional start and stop datetime strings to narrow records first.
+        seq: Sequence number or numbers to keep.
+
+    Returns:
+        A new LI2200File with only the selected records.
+    """
+    all_records = file.observations.records
+    selected_record_ids = _record_ids(locate_records(file, records)) if records is not None else None
 
     if dt is not None:
         start, stop = dt
-        records = tuple(record for record in records if start <= record.parsed["dt"] <= stop)
+        all_records = tuple(record for record in all_records if start <= record.parsed["dt"] <= stop)
 
     if rec_type is None:
         allowed_types = None
