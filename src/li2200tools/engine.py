@@ -365,27 +365,45 @@ def filter_file(
         raw="".join(record.raw for record in filtered_records),
         records=tuple(filtered_records),
     )
-    return li.copy(observations=observations)
+    return file.copy(observations=observations)
 
 
 def delete_records(
     file: LI2200File,
-    rec_type=None,
-    nA=None,
-    nB=None,
-    dt=None,
-    seq=None,
+    records: RecordSpec | None = None,
+    rec_type: RecordType | Iterable[RecordType] | None = None,
+    nA: NumberSpec | None = None,
+    nB: NumberSpec | None = None,
+    dt: tuple[str, str] | list[str] | None = None,
+    seq: NumberSpec | None = None,
 ) -> LI2200File:
-    records = file.observations.records
+    """
+    Return a new LI2200File with selected records removed.
+
+    Args:
+        file: The input file in LI2200File object format.
+        records: Records to delete. Use Record objects directly, single selectors
+            like "A2" or "B5", or ranges like "A1:A3" and "B5:B6".
+        rec_type: Record type or types to delete, such as "A" or ["A", "B"].
+        nA: 1-based logical A record numbers to delete.
+        nB: 1-based logical B record numbers to delete.
+        dt: Optional start and stop datetime strings to narrow records first.
+        seq: Sequence number or numbers to delete.
+
+    Returns:
+        A new LI2200File without the selected records.
+    """
+    all_records = file.observations.records
+    selected_record_ids = _record_ids(locate_records(file, records)) if records is not None else None
 
     if dt is not None:
         start, stop = dt
         records_in_dt = tuple(
-            record for record in records
+            record for record in all_records
             if start <= record.parsed["dt"] <= stop
         )
     else:
-        records_in_dt = records
+        records_in_dt = all_records
 
     if rec_type is None:
         allowed_types = None
