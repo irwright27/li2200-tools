@@ -428,32 +428,35 @@ def delete_records(
         else {}
     )
 
-    records_to_delete = set()
+    records_to_delete: set[int] = set()
 
     for record in records_in_dt:
+        if selected_record_ids is not None and id(record) not in selected_record_ids:
+            continue
+
         if allowed_types is not None and record.record_type not in allowed_types:
             continue
 
         if record.record_type == "A" and nA_numbers is not None:
             if record in (selected_a[i] for i in nA_numbers if i in selected_a):
-                records_to_delete.add(record)
+                records_to_delete.add(id(record))
             continue
 
         if record.record_type == "B" and nB_numbers is not None:
             if record in (selected_b[i] for i in nB_numbers if i in selected_b):
-                records_to_delete.add(record)
+                records_to_delete.add(id(record))
             continue
 
         if seq_numbers is not None and record.parsed.get("seq") in seq_numbers:
-            records_to_delete.add(record)
+            records_to_delete.add(id(record))
             continue
 
         if seq_numbers is None and nA_numbers is None and nB_numbers is None:
-            records_to_delete.add(record)
+            records_to_delete.add(id(record))
 
     kept_records = tuple(
-        record for record in records
-        if record not in records_to_delete
+        record for record in all_records
+        if id(record) not in records_to_delete
     )
 
     observations = Observations(
