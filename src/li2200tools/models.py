@@ -78,8 +78,7 @@ class Observations:
     raw: str
     records: tuple[Record, ...] = ()
 
-    @property
-    def parsed(self) -> list[dict[str, Any]]:
+    def _parsed_rows(self) -> list[dict[str, Any]]:
         rows = []
         for record in self.records:
             row = {"record_type": record.record_type, **record.parsed}
@@ -88,6 +87,40 @@ class Observations:
                 row.update({f"ring{i}": value for i, value in enumerate(rings, start=1)})
             rows.append(row)
         return rows
+
+    @property
+    def parsed(self) -> Any:
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise ImportError(
+                "Observations.parsed requires pandas. Install it with "
+                "`python -m pip install pandas`."
+            ) from exc
+
+        df = pd.DataFrame(self._parsed_rows())
+        preferred_columns = [
+            "record_type",
+            "seq",
+            "dt",
+            "sensor",
+            "gps_id",
+            "ring1",
+            "ring2",
+            "ring3",
+            "ring4",
+            "ring5",
+            "value",
+        ]
+        ordered_columns = [
+            column for column in preferred_columns
+            if column in df.columns
+        ]
+        ordered_columns.extend(
+            column for column in df.columns
+            if column not in preferred_columns
+        )
+        return df.loc[:, ordered_columns]
 
     def filter(self, predicate: Callable[[Record], bool]) -> "Observations":
         records = tuple(record for record in self.records if predicate(record))

@@ -2,6 +2,8 @@ from li2200tools.models import Observations, Record
 
 
 def test_observations_parsed_flattens_rings():
+    import pandas as pd
+
     observations = Observations(
         raw="",
         records=(
@@ -28,23 +30,31 @@ def test_observations_parsed_flattens_rings():
         ),
     )
 
-    assert observations.parsed == [
-        {
-            "record_type": "A",
-            "seq": 1,
-            "dt": "2026-06-02 12:00:00",
-            "sensor": "W1",
-            "ring1": 1.0,
-            "ring2": 2.0,
-            "ring3": 3.0,
-            "ring4": 4.0,
-            "ring5": 5.0,
-        },
-        {
-            "record_type": "L",
-            "seq": 2,
-            "dt": "2026-06-02 12:01:00",
-            "sensor": "PAR1",
-            "value": 800.0,
-        },
+    parsed = observations.parsed
+
+    assert list(parsed.columns) == [
+        "record_type",
+        "seq",
+        "dt",
+        "sensor",
+        "ring1",
+        "ring2",
+        "ring3",
+        "ring4",
+        "ring5",
+        "value",
     ]
+    assert parsed.loc[0, "record_type"] == "A"
+    assert parsed.loc[0, "seq"] == 1
+    assert parsed.loc[0, "dt"] == "2026-06-02 12:00:00"
+    assert parsed.loc[0, "sensor"] == "W1"
+    assert parsed.loc[0, "ring1"] == 1.0
+    assert parsed.loc[0, "ring5"] == 5.0
+    assert pd.isna(parsed.loc[0, "value"])
+
+    assert parsed.loc[1, "record_type"] == "L"
+    assert parsed.loc[1, "seq"] == 2
+    assert parsed.loc[1, "dt"] == "2026-06-02 12:01:00"
+    assert parsed.loc[1, "sensor"] == "PAR1"
+    assert pd.isna(parsed.loc[1, "ring1"])
+    assert parsed.loc[1, "value"] == 800.0
