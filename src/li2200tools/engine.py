@@ -335,11 +335,14 @@ def filter_file(
     nA_numbers = _expand_numbers(nA)
     nB_numbers = _expand_numbers(nB)
 
-    selected_a = _record_logical_numbers(records, "A") if nA_numbers is not None else {}
-    selected_b = _record_logical_numbers(records, "B") if nB_numbers is not None else {}
+    selected_a = _record_logical_numbers(all_records, "A") if nA_numbers is not None else {}
+    selected_b = _record_logical_numbers(all_records, "B") if nB_numbers is not None else {}
 
     filtered_records: list[Record] = []
-    for record in records:
+    for record in all_records:
+        if selected_record_ids is not None and id(record) not in selected_record_ids:
+            continue
+
         if allowed_types is not None and record.record_type not in allowed_types:
             continue
 
