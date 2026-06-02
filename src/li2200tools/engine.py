@@ -1,13 +1,44 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Iterable, Union
+from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+import re
+from typing import Iterable, Literal, Union, cast
 
-from li2200tools.io import read_li2200
 from li2200tools.models import LI2200File, Observations, Record, RecordType
 
 
 NumberSpec = Union[int, str, range, Iterable[Union[int, str, range]]]
+RecordSelector = Union[str, Record]
+RecordSpec = Union[RecordSelector, Iterable[RecordSelector]]
+AveragePlacement = Literal["beginning", "end", "first", "last"]
+InterpolationMethod = Literal["linear", "connect"]
+
+
+_RECORD_SELECTOR = re.compile(r"^([ABGL])(\d+)(?::([ABGL])?(\d+))?$", re.IGNORECASE)
+_DATETIME_FORMATS = (
+    "%Y%m%d %H:%M:%S.%f",
+    "%Y%m%d %H:%M:%S",
+    "%Y%m%d %H:%M",
+    "%Y%m%dT%H:%M:%S.%f",
+    "%Y%m%dT%H:%M:%S",
+    "%Y%m%dT%H:%M",
+    "%Y-%m-%d %H:%M:%S.%f",
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%dT%H:%M:%S.%f",
+    "%Y-%m-%dT%H:%M:%S",
+    "%Y-%m-%dT%H:%M",
+    "%Y/%m/%d %H:%M:%S.%f",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%m/%d/%Y %H:%M:%S.%f",
+    "%m/%d/%Y %H:%M:%S",
+    "%m/%d/%Y %H:%M",
+    "%m/%d/%y %H:%M:%S.%f",
+    "%m/%d/%y %H:%M:%S",
+    "%m/%d/%y %H:%M",
+)
 
 
 def _expand_numbers(spec: NumberSpec | None) -> set[int] | None:
