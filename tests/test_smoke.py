@@ -1,4 +1,7 @@
+import pytest
+
 from li2200tools.engine import change_record
+from li2200tools.io import write_li2200
 from li2200tools.models import Header, LI2200File, Metadata, Observations, Record, Results, Sensors, Summary
 
 
@@ -65,6 +68,27 @@ def test_change_record_preserves_global_position_for_type_change_in_other_direct
 
     assert list(parsed["seq"]) == [108, 109, 110, 111, 112, 113, 114]
     assert list(parsed["record_type"]) == ["A", "B", "A", "B", "A", "B", "A"]
+
+
+def test_write_li2200_refuses_to_overwrite_by_default(tmp_path):
+    out_path = tmp_path / "output.TXT"
+    out_path.write_text("existing")
+
+    with pytest.raises(FileExistsError):
+        write_li2200(_file([_record("A", 1)]), out_path)
+
+    assert out_path.read_text() == "existing"
+
+
+def test_write_li2200_overwrites_when_requested(tmp_path):
+    out_path = tmp_path / "output.TXT"
+    out_path.write_text("existing")
+
+    written_path = write_li2200(_file([_record("A", 1)]), out_path, overwrite=True)
+
+    assert written_path == out_path
+    assert out_path.read_text() != "existing"
+    assert "### Observations\nA\t1\t2026-06-02 12:00:00\tW1\t1\t2\t3\t4\t5\n" in out_path.read_text()
 
 
 def test_observations_parsed_flattens_rings():

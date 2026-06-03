@@ -102,6 +102,13 @@ file = read_li2200("input.TXT")
 write_li2200(file, "output.TXT")
 ```
 
+By default, `write_li2200()` will not overwrite an existing file. Pass
+`overwrite=True` when you intentionally want to replace the output file:
+
+```python
+write_li2200(file, "output.TXT", overwrite=True)
+```
+
 Use `header_match_filename=True` to update the `LAI_FILE` header to match the
 output filename without its extension:
 
