@@ -529,6 +529,10 @@ def change_record(
     )
 
     source_record_id = id(source_record)
+    source_index = next(
+        index for index, existing_record in enumerate(file.observations.records)
+        if id(existing_record) == source_record_id
+    )
     remaining_records = [
         existing_record for existing_record in file.observations.records
         if id(existing_record) != source_record_id
@@ -540,25 +544,25 @@ def change_record(
         parsed={**source_record.parsed},
     )
 
-    insert_at: int | None = None
-    target_count = 0
-    for index, existing_record in enumerate(remaining_records):
-        if existing_record.record_type != target_record_type:
-            continue
+    target_count = sum(
+        1 for existing_record in remaining_records
+        if existing_record.record_type == target_record_type
+    )
+    if target_n > target_count + 1:
+        raise ValueError(
+            f"Cannot place record at {target_record_type}{target_n}; "
+            f"only {target_count} {target_record_type} records remain after moving the source"
+        )
 
-        target_count += 1
-        if target_count == target_n:
-            insert_at = index
-            break
+    candidate_positions: list[int] = []
+    target_records_before = 0
+    for index in range(len(remaining_records) + 1):
+        if target_records_before == target_n - 1:
+            candidate_positions.append(index)
+        if index < len(remaining_records) and remaining_records[index].record_type == target_record_type:
+            target_records_before += 1
 
-    if insert_at is None:
-        if target_n == target_count + 1:
-            insert_at = len(remaining_records)
-        else:
-            raise ValueError(
-                f"Cannot place record at {target_record_type}{target_n}; "
-                f"only {target_count} {target_record_type} records remain after moving the source"
-            )
+    insert_at = min(candidate_positions, key=lambda index: abs(index - source_index))
 
     remaining_records.insert(insert_at, changed_record)
 

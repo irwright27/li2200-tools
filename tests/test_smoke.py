@@ -1,4 +1,70 @@
-from li2200tools.models import Observations, Record
+from li2200tools.engine import change_record
+from li2200tools.models import Header, LI2200File, Metadata, Observations, Record, Results, Sensors, Summary
+
+
+def _record(record_type, seq):
+    return Record(
+        raw=f"{record_type}\t{seq}\t2026-06-02 12:00:00\tW1\t1\t2\t3\t4\t5\n",
+        record_type=record_type,
+        parsed={
+            "seq": seq,
+            "dt": "2026-06-02 12:00:00",
+            "sensor": "W1",
+            "rings": [1.0, 2.0, 3.0, 4.0, 5.0],
+        },
+    )
+
+
+def _file(records):
+    return LI2200File(
+        path=None,
+        raw="",
+        header=Header(raw="", key="LAI_FILE", value="test"),
+        metadata=Metadata(raw=""),
+        results=Results(raw=""),
+        summary=Summary(raw=""),
+        sensors=Sensors(raw=""),
+        observations=Observations(raw="", records=tuple(records)),
+    )
+
+
+def test_change_record_preserves_global_position_when_already_valid_for_target_number():
+    file = _file(
+        [
+            _record("A", 31),
+            _record("B", 32),
+            _record("A", 33),
+            _record("A", 34),
+            _record("A", 35),
+            _record("B", 36),
+        ]
+    )
+
+    changed = change_record(file, "A3", "B2")
+    parsed = changed.observations.parsed
+
+    assert list(parsed["seq"]) == [31, 32, 33, 34, 35, 36]
+    assert list(parsed["record_type"]) == ["A", "B", "A", "B", "A", "B"]
+
+
+def test_change_record_preserves_global_position_for_type_change_in_other_direction():
+    file = _file(
+        [
+            _record("A", 108),
+            _record("B", 109),
+            _record("A", 110),
+            _record("B", 111),
+            _record("B", 112),
+            _record("B", 113),
+            _record("A", 114),
+        ]
+    )
+
+    changed = change_record(file, "B3", "A3")
+    parsed = changed.observations.parsed
+
+    assert list(parsed["seq"]) == [108, 109, 110, 111, 112, 113, 114]
+    assert list(parsed["record_type"]) == ["A", "B", "A", "B", "A", "B", "A"]
 
 
 def test_observations_parsed_flattens_rings():
