@@ -70,6 +70,52 @@ def test_change_record_preserves_global_position_for_type_change_in_other_direct
     assert list(parsed["record_type"]) == ["A", "B", "A", "B", "A", "B", "A"]
 
 
+def test_change_record_type_only_target_preserves_global_position():
+    file = _file(
+        [
+            _record("A", 1),
+            _record("B", 2),
+            _record("A", 3),
+            _record("B", 4),
+            _record("A", 5),
+            _record("B", 6),
+            _record("A", 7),
+            _record("B", 8),
+            _record("A", 9),
+            _record("B", 10),
+        ]
+    )
+
+    changed = change_record(file, "A5", "B")
+    parsed = changed.observations.parsed
+
+    assert list(parsed["seq"]) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert list(parsed["record_type"]) == ["A", "B", "A", "B", "B", "B", "A", "B", "A", "B"]
+
+
+def test_change_record_type_only_keyword_preserves_global_position():
+    file = _file(
+        [
+            _record("A", 1),
+            _record("B", 2),
+            _record("A", 3),
+            _record("B", 4),
+            _record("A", 5),
+            _record("B", 6),
+            _record("A", 7),
+            _record("B", 8),
+            _record("A", 9),
+            _record("B", 10),
+        ]
+    )
+
+    changed = change_record(file, "A5", record_type="B")
+    parsed = changed.observations.parsed
+
+    assert list(parsed["seq"]) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    assert list(parsed["record_type"]) == ["A", "B", "A", "B", "B", "B", "A", "B", "A", "B"]
+
+
 def test_write_li2200_refuses_to_overwrite_by_default(tmp_path):
     out_path = tmp_path / "output.TXT"
     out_path.write_text("existing")

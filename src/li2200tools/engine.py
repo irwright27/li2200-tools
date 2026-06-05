@@ -197,9 +197,10 @@ def _parse_change_target(
     n: int | None,
     default_record_type: RecordType,
     default_n: int,
-) -> tuple[RecordType, int]:
+) -> tuple[RecordType, int, bool]:
     target_record_type = record_type
     target_n = n
+    target_has_n = n is not None
 
     if target is not None:
         target = target.strip()
@@ -212,6 +213,7 @@ def _parse_change_target(
 
         if match.group(2) is not None:
             target_n = int(match.group(2))
+            target_has_n = True
 
     if target_record_type is None:
         target_record_type = default_record_type
@@ -225,7 +227,7 @@ def _parse_change_target(
     if target_n < 1:
         raise ValueError("Destination record number must be 1 or greater")
 
-    return target_record_type, target_n
+    return target_record_type, target_n, target_has_n
 
 
 def _round_decimal_places(value: float, places: int) -> float:
@@ -509,7 +511,7 @@ def change_record(
             changing only number.
 
     Returns:
-        A new LI2200File with the changed record moved to its destination.
+        A new LI2200File with the requested record changed.
     """
     source_record = _single_located_record(file, record)
 
@@ -520,7 +522,7 @@ def change_record(
         raise ValueError("change_record requires a source record with ring values")
 
     source_n = _logical_number_of_record(file, source_record)
-    target_record_type, target_n = _parse_change_target(
+    target_record_type, target_n, target_has_n = _parse_change_target(
         target,
         record_type,
         n,
@@ -544,25 +546,28 @@ def change_record(
         parsed={**source_record.parsed},
     )
 
-    target_count = sum(
-        1 for existing_record in remaining_records
-        if existing_record.record_type == target_record_type
-    )
-    if target_n > target_count + 1:
-        raise ValueError(
-            f"Cannot place record at {target_record_type}{target_n}; "
-            f"only {target_count} {target_record_type} records remain after moving the source"
+    if target_has_n:
+        target_count = sum(
+            1 for existing_record in remaining_records
+            if existing_record.record_type == target_record_type
         )
+        if target_n > target_count + 1:
+            raise ValueError(
+                f"Cannot place record at {target_record_type}{target_n}; "
+                f"only {target_count} {target_record_type} records remain after moving the source"
+            )
 
-    candidate_positions: list[int] = []
-    target_records_before = 0
-    for index in range(len(remaining_records) + 1):
-        if target_records_before == target_n - 1:
-            candidate_positions.append(index)
-        if index < len(remaining_records) and remaining_records[index].record_type == target_record_type:
-            target_records_before += 1
+        candidate_positions: list[int] = []
+        target_records_before = 0
+        for index in range(len(remaining_records) + 1):
+            if target_records_before == target_n - 1:
+                candidate_positions.append(index)
+            if index < len(remaining_records) and remaining_records[index].record_type == target_record_type:
+                target_records_before += 1
 
-    insert_at = min(candidate_positions, key=lambda index: abs(index - source_index))
+        insert_at = min(candidate_positions, key=lambda index: abs(index - source_index))
+    else:
+        insert_at = source_index
 
     remaining_records.insert(insert_at, changed_record)
 
