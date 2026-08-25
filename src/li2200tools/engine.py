@@ -849,3 +849,298 @@ def interpolate_above_records(
     )
 
     return file.copy(observations=observations)
+
+
+def _set_record_seq(record: Record, seq: int) -> Record:
+    """
+    Return a copy of a record with a new sequence number.
+
+    If raw text exists, only the sequence-number field is rewritten so that
+    the rest of the original numeric/text formatting is preserved.
+    """
+    parsed = {**record.parsed, "seq": seq}
+
+    if not record.raw:
+        return Record(
+            raw="",
+            record_type=record.record_type,
+            parsed=parsed,
+        )
+
+    if record.raw.endswith("\r\n"):
+        ending = "\r\n"
+        body = record.raw[:-2]
+    elif record.raw.endswith("\n"):
+        ending = "\n"
+        body = record.raw[:-1]
+    else:
+        ending = ""
+        body = record.raw
+
+    parts = body.split("\t")
+
+    if len(parts) < 2:
+        raise ValueError("Cannot update sequence number in malformed record")
+
+    parts[1] = str(seq)
+
+    return Record(
+        raw="\t".join(parts) + ending,
+        record_type=record.record_type,
+        parsed=parsed,
+    )
+
+
+def _utc_fix_datetime(local_timestamp: str, timezone_name: str) -> str:
+    """
+    Convert an LI-2200 local observation timestamp to UTC.
+
+    Returns UTC in the LI-2200 G-record format YYYYMMDD HH:MM:SS.
+    """
+    try:
+        local_zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(f"Unknown timezone: {timezone_name!r}") from exc
+
+    local_dt, _ = _parse_datetime(local_timestamp)
+
+    if local_dt.tzinfo is None:
+        local_dt = local_dt.replace(tzinfo=local_zone)
+    else:
+        local_dt = local_dt.astimezone(local_zone)
+
+    utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
+
+    return utc_dt.strftime("%Y%m%d %H:%M:%S")
+
+
+def add_g_records(
+    file: LI2200File,
+    record: str,
+    *,
+    lat: float | None = None,
+    lon: float | None = None,
+    altitude: float | None = None,
+    points: Iterable[GPSPoint] | None = None,
+    timezone: str,
+    satellites: int = 3,
+    quality: float = 0.67,
+) -> LI2200File:
+    """
+    Add GPS (G) records immediately after selected A/B observation records.
+
+    The same coordinate can be assigned to one or many records using
+    lat/lon/altitude, or an ordered sequence of coordinates can be supplied
+    using points.
+
+    Args:
+        file:
+            The input LI2200File.
+
+        record:
+            Which measurement records receive G records.
+
+            Examples:
+                "B3"       -> only B3
+                "A2:A5"    -> A2 through A5
+                "A"        -> every A record
+                "B"        -> every B record
+                "all"      -> every A and B record, in file order
+
+        lat:
+            Latitude used when assigning one location to all selected records.
+
+        lon:
+            Longitude used when assigning one location to all selected records.
+
+        altitude:
+            Altitude in meters used when assigning one location to all
+            selected records.
+
+        points:
+            Ordered iterable of (lat, lon, altitude) tuples. There must be
+            exactly one point for every selected record.
+
+        timezone:
+            IANA timezone name describing the local observation timestamps,
+            such as "America/Los_Angeles".
+
+        satellites:
+            Number of connected GPS satellites. Defaults to 3.
+
+        quality:
+            GPS HDOP/quality value. Defaults to 0.67.
+
+    Returns:
+        A new LI2200File with G records inserted after the selected records.
+
+    Raises:
+        ValueError:
+            If the target is invalid, coordinates are missing, the number of
+            points does not match the number of selected records, or a selected
+            record already has an associated G record.
+    """
+    selector = record.strip()
+
+    # ------------------------------------------------------------
+    # Determine which A/B records should receive G records.
+    # ------------------------------------------------------------
+
+    if selector.upper() == "A":
+        target_records = tuple(
+            existing
+            for existing in file.observations.records
+            if existing.record_type == "A"
+        )
+
+    elif selector.upper() == "B":
+        target_records = tuple(
+            existing
+            for existing in file.observations.records
+            if existing.record_type == "B"
+        )
+
+    elif selector.lower() == "all":
+        target_records = tuple(
+            existing
+            for existing in file.observations.records
+            if existing.record_type in ("A", "B")
+        )
+
+    else:
+        target_records = locate_records(file, selector)
+
+        if any(
+            target.record_type not in ("A", "B")
+            for target in target_records
+        ):
+            raise ValueError("G records can only be attached to A or B records")
+
+    if not target_records:
+        raise ValueError(f"No records matched {record!r}")
+
+    # ------------------------------------------------------------
+    # Determine the coordinates associated with each target.
+    # ------------------------------------------------------------
+
+    if points is not None:
+        if lat is not None or lon is not None or altitude is not None:
+            raise ValueError(
+                "Use either points=... or lat/lon/altitude, not both"
+            )
+
+        point_list = tuple(points)
+
+        if len(point_list) != len(target_records):
+            raise ValueError(
+                f"{len(point_list)} GPS points were provided, but "
+                f"{len(target_records)} records were selected"
+            )
+
+        normalized_points: tuple[GPSPoint, ...] = tuple(
+            (float(point[0]), float(point[1]), float(point[2]))
+            for point in point_list
+        )
+
+    else:
+        if lat is None or lon is None or altitude is None:
+            raise ValueError(
+                "lat, lon, and altitude are required when points is not provided"
+            )
+
+        point = (
+            float(lat),
+            float(lon),
+            float(altitude),
+        )
+
+        normalized_points = tuple(
+            point
+            for _ in target_records
+        )
+
+    # ------------------------------------------------------------
+    # Check whether any target already has an associated G record.
+    # ------------------------------------------------------------
+
+    all_records = file.observations.records
+    target_ids = _record_ids(target_records)
+
+    for index, existing in enumerate(all_records):
+        if id(existing) not in target_ids:
+            continue
+
+        if (
+            index + 1 < len(all_records)
+            and all_records[index + 1].record_type == "G"
+        ):
+            logical_n = _logical_number_of_record(file, existing)
+            raise ValueError(
+                f"{existing.record_type}{logical_n} already has "
+                "an associated G record"
+            )
+
+    # Match points to target records by their selected order.
+    points_by_record_id = {
+        id(target): point
+        for target, point in zip(target_records, normalized_points)
+    }
+
+    # ------------------------------------------------------------
+    # Insert each G immediately after its corresponding A/B record.
+    # ------------------------------------------------------------
+
+    inserted_records: list[Record] = []
+
+    for existing in all_records:
+        inserted_records.append(existing)
+
+        point = points_by_record_id.get(id(existing))
+
+        if point is None:
+            continue
+
+        point_lat, point_lon, point_altitude = point
+
+        local_dt = existing.parsed.get("dt")
+        if local_dt is None:
+            raise ValueError("Target record does not contain a timestamp")
+
+        inserted_records.append(
+            Record(
+                raw="",
+                record_type="G",
+                parsed={
+                    # Temporary value; replaced during resequencing below.
+                    "seq": 0,
+                    "dt": local_dt,
+                    "gps_id": "G0",
+                    "lat": point_lat,
+                    "lon": point_lon,
+                    "alt": point_altitude,
+                    "gpsnum": satellites,
+                    "hdop": quality,
+                    "fix_dt": _utc_fix_datetime(local_dt, timezone),
+                },
+            )
+        )
+
+    # ------------------------------------------------------------
+    # Sequence numbers are physical record numbers, so insertion
+    # requires every observation to be numbered again.
+    # ------------------------------------------------------------
+
+    resequenced_records = tuple(
+        _set_record_seq(existing, seq)
+        for seq, existing in enumerate(inserted_records, start=1)
+    )
+
+    observations = Observations(
+        raw="".join(
+            existing.raw
+            for existing in resequenced_records
+        ),
+        records=resequenced_records,
+    )
+
+    return file.copy(observations=observations)
