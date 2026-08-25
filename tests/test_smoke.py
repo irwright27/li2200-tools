@@ -1,6 +1,6 @@
 import pytest
 
-from li2200tools.engine import change_record
+from li2200tools.engine import change_record, g_records_to_crs
 from li2200tools.io import write_li2200
 from li2200tools.models import Header, LI2200File, Metadata, Observations, Record, Results, Sensors, Summary
 
@@ -29,6 +29,51 @@ def _file(records):
         sensors=Sensors(raw=""),
         observations=Observations(raw="", records=tuple(records)),
     )
+
+
+def _g_record(seq, lat, lon):
+    return Record(
+        raw=f"G\t{seq}\t2026-06-02 12:00:00\tG0\t{lat}\t{lon}\t10\t3\t0.67\t20260602 19:00:00\n",
+        record_type="G",
+        parsed={
+            "seq": seq,
+            "dt": "2026-06-02 12:00:00",
+            "gps_id": "G0",
+            "lat": lat,
+            "lon": lon,
+            "alt": 10.0,
+            "gpsnum": 3,
+            "hdop": 0.67,
+            "fix_dt": "20260602 19:00:00",
+        },
+    )
+
+
+def test_g_records_to_crs_returns_file_with_all_g_coordinates_transformed():
+    original = _file([_record("B", 1), _g_record(2, 45.0, -123.0)])
+
+    transformed = g_records_to_crs(original, target_crs="EPSG:32610")
+
+    assert isinstance(transformed, LI2200File)
+    assert transformed is not original
+    assert transformed.observations.records[0] is original.observations.records[0]
+    transformed_g = transformed.observations.records[1]
+    assert transformed_g.parsed["lon"] == pytest.approx(500000.0)
+    assert transformed_g.parsed["lat"] == pytest.approx(4982950.400)
+    assert transformed_g.parsed["alt"] == 10.0
+    assert transformed_g.raw == ""
+    assert original.observations.records[1].parsed["lon"] == -123.0
+
+
+def test_g_records_to_crs_only_transforms_selected_g_records():
+    first = _g_record(1, 45.0, -123.0)
+    second = _g_record(2, 46.0, -122.0)
+    original = _file([first, second])
+
+    transformed = g_records_to_crs(original, "G2", target_crs="EPSG:32610")
+
+    assert transformed.observations.records[0] is first
+    assert transformed.observations.records[1].parsed["lon"] != -122.0
 
 
 def test_change_record_preserves_global_position_when_already_valid_for_target_number():

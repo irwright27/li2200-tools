@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 import re
 from typing import Iterable, Literal, Union, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from pyproj import Transformer
 
 from li2200tools.models import Header, LI2200File, Observations, Record, RecordType
 
@@ -1144,3 +1145,115 @@ def add_g_records(
     )
 
     return file.copy(observations=observations)
+
+
+def g_records_to_crs(
+    file: LI2200File,
+    records: RecordSpec | Literal["all"] = "all",
+    source_crs: str = "EPSG:4326",
+    target_crs: str = "EPSG:32610",
+) -> LI2200File:
+    """
+    Transform coordinates stored in selected G records and return a new
+    LI2200File.
+
+    G records store their two horizontal coordinates in the ``lat`` and
+    ``lon`` fields. For geographic CRSs these represent latitude and
+    longitude. For projected CRSs:
+
+        lon -> x coordinate / easting
+        lat -> y coordinate / northing
+
+    Args:
+        file:
+            Input LI2200File.
+
+        records:
+            G records to transform.
+
+            Examples:
+                "G3"
+                ["G3", "G5", "G8"]
+                "G2:G6"
+                "all"
+
+            Defaults to all G records.
+
+        source_crs:
+            CRS currently used by the G-record coordinates.
+            Defaults to EPSG:4326.
+
+        target_crs:
+            CRS to transform coordinates into.
+            Defaults to EPSG:32610.
+
+    Returns:
+        A new LI2200File containing the transformed G records.
+    """
+
+    if records == "all":
+        selected_records = tuple(
+            record
+            for record in file.observations.records
+            if record.record_type == "G"
+        )
+    else:
+        selected_records = locate_records(file, records)
+
+    if not selected_records:
+        raise ValueError("No G records were selected")
+
+    if any(record.record_type != "G" for record in selected_records):
+        raise ValueError(
+            "g_records_to_crs only accepts G records"
+        )
+
+    transformer = Transformer.from_crs(
+        source_crs,
+        target_crs,
+        always_xy=True,
+    )
+
+    selected_ids = _record_ids(selected_records)
+
+    new_records = []
+
+    for record in file.observations.records:
+
+        # Leave unselected records untouched
+        if id(record) not in selected_ids:
+            new_records.append(record)
+            continue
+
+        # pyproj always_xy=True means:
+        # input  = x, y
+        # output = x, y
+        #
+        # For EPSG:4326:
+        # x = longitude
+        # y = latitude
+        x = record.parsed["lon"]
+        y = record.parsed["lat"]
+
+        new_x, new_y = transformer.transform(x, y)
+
+        new_record = Record(
+            raw="",
+            record_type="G",
+            parsed={
+                **record.parsed,
+                "lon": new_x,
+                "lat": new_y,
+            },
+        )
+
+        new_records.append(new_record)
+
+    observations = Observations(
+        raw="",
+        records=tuple(new_records),
+    )
+
+    return file.copy(
+        observations=observations
+    )
