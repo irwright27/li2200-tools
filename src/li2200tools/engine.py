@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import re
 from typing import Iterable, Literal, Union, cast
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from li2200tools.models import Header, LI2200File, Observations, Record, RecordType
 
@@ -13,6 +14,7 @@ RecordSelector = Union[str, Record]
 RecordSpec = Union[RecordSelector, Iterable[RecordSelector]]
 AveragePlacement = Literal["beginning", "end", "first", "last"]
 InterpolationMethod = Literal["linear", "connect"]
+GPSPoint = tuple[float, float, float]
 
 
 _RECORD_SELECTOR = re.compile(r"^([ABGL])(\d+)(?::([ABGL])?(\d+))?$", re.IGNORECASE)
