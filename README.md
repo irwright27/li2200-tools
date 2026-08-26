@@ -77,6 +77,25 @@ write_li2200(
 )
 ```
 
+## Orchard Viewer
+
+Launch the interactive browser-based OBJ and LI-2200 point editor from a
+terminal:
+
+```bash
+li2200-viewer \
+  "/path/to/observations.TXT" \
+  "/path/to/orchard.obj" \
+  --output-path "/path/to/observations_edited.TXT" \
+  --g-source-crs EPSG:4326 \
+  --target-crs EPSG:32610
+```
+
+The app opens at `http://localhost:5006`. Select G-record points, drag the
+X/Y/Z sliders, and click **Save G records** to write the edited file. If the
+input has no G records, provide `--gps-csv` with `Latitude`, `Longitude`, and
+`Elevation_m` columns.
+
 ## Record Selectors
 
 Most editing functions accept a `records=` argument using compact selectors.

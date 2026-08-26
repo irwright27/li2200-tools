@@ -7,4 +7,12 @@ requires-python = ">=3.12"
 dependencies = [
     "pandas",
     "pyproj",
+    "pyvista",
+    "panel",
+    "trame",
+    "trame-vtk",
+    "trame-vuetify",
 ]
+
+[project.scripts]
+li2200-viewer = "li2200tools.viewer_app:main"

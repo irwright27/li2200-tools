@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import re
-from typing import Iterable, Literal, Union, cast
+from typing import Iterable, Literal, Mapping, Union, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pyproj import Transformer
 
@@ -174,6 +174,15 @@ def _record_ids(records: Iterable[Record]) -> set[int]:
 
 
 def _single_located_record(file: LI2200File, record: RecordSelector) -> Record:
+    if isinstance(record, str):
+        match = re.fullmatch(r"([AB])?(\d+)?", record.strip(), re.IGNORECASE)
+        if match is not None and match.group(1) is not None and match.group(2) is not None:
+            record_type = cast(RecordType, match.group(1).upper())
+            seq = int(match.group(2))
+            for candidate in file.observations.records:
+                if candidate.record_type == record_type and candidate.parsed.get("seq") == seq:
+                    return candidate
+
     records = locate_records(file, record)
     if len(records) != 1:
         raise ValueError("Expected exactly one source record")
@@ -569,15 +578,18 @@ def change_record(
                 target_records_before += 1
 
         insert_at = min(candidate_positions, key=lambda index: abs(index - source_index))
+        remaining_records.insert(insert_at, changed_record)
+        observations = Observations(
+            raw="".join(record.raw for record in remaining_records),
+            records=tuple(remaining_records),
+        )
     else:
-        insert_at = source_index
-
-    remaining_records.insert(insert_at, changed_record)
-
-    observations = Observations(
-        raw="".join(record.raw for record in remaining_records),
-        records=tuple(remaining_records),
-    )
+        updated_records = list(file.observations.records)
+        updated_records[source_index] = changed_record
+        observations = Observations(
+            raw="".join(record.raw for record in updated_records),
+            records=tuple(updated_records),
+        )
 
     return file.copy(observations=observations)
 
@@ -1257,3 +1269,52 @@ def g_records_to_crs(
     return file.copy(
         observations=observations
     )
+
+
+def update_g_records(
+    file: LI2200File,
+    points: Mapping[str, GPSPoint],
+    prefix: str = "G",
+) -> LI2200File:
+    """Update G-record coordinates from named scene points.
+
+    Point names are matched in G-record order as ``{prefix}1``, ``{prefix}2``,
+    and so on. Coordinates are stored as x/y/z in the scene and written back
+    as the G-record lon/lat/alt fields.
+    """
+    updated_records: list[Record] = []
+    g_index = 0
+
+    for record in file.observations.records:
+        if record.record_type != "G":
+            updated_records.append(record)
+            continue
+
+        g_index += 1
+        name = f"{prefix}{g_index}"
+        if name not in points:
+            updated_records.append(record)
+            continue
+
+        x, y, z = points[name]
+        updated_records.append(
+            Record(
+                raw="",
+                record_type="G",
+                parsed={
+                    **record.parsed,
+                    "lon": float(x),
+                    "lat": float(y),
+                    "alt": float(z),
+                },
+            )
+        )
+
+    if not points:
+        raise ValueError("No scene points were provided for the G-record update")
+
+    observations = Observations(
+        raw="",
+        records=tuple(updated_records),
+    )
+    return file.copy(observations=observations)
