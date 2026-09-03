@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 import re
-from typing import Iterable, Literal, Mapping, Union, cast
+from typing import Iterable, Literal, Mapping, Sequence, Union, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pyproj import Transformer
 
@@ -167,6 +167,91 @@ def locate_records(file: LI2200File, records: RecordSpec) -> tuple[Record, ...]:
         located_records.extend(records_by_number[number] for number in range(start, end + 1))
 
     return tuple(located_records)
+
+
+def compose_file(
+    *selections: Sequence[LI2200File | RecordSelector],
+    include_associated_g_records: bool = False,
+) -> LI2200File:
+    """Create a new file from ordered record selections across source files.
+
+    Each positional selection contains a source ``LI2200File`` followed by one
+    or more record selectors. Selections and selectors are processed in the
+    order supplied. When ``include_associated_g_records`` is true, a G record
+    immediately following a selected non-G record in its source file is also
+    placed immediately after that record in the result.
+
+    The first source file supplies the non-observation sections of the new
+    file. The composed records are resequenced according to their new physical
+    order. Explicitly selected G records are handled like any other explicit
+    selection and do not affect associated-G handling.
+
+    Example::
+
+        new_file = compose_file(
+            (file1, "A1"),
+            (file2, "B1", "B3:B6"),
+            include_associated_g_records=True,
+        )
+    """
+    if not selections:
+        raise ValueError("compose_file requires at least one selection")
+
+    composed_records: list[Record] = []
+    template: LI2200File | None = None
+
+    for selection in selections:
+        if isinstance(selection, (str, bytes)) or not isinstance(selection, Sequence):
+            raise TypeError("Each selection must contain a file followed by record selectors")
+        if len(selection) < 2:
+            raise ValueError("Each selection must contain a file and at least one record selector")
+
+        source = selection[0]
+        if not isinstance(source, LI2200File):
+            raise TypeError("The first item in each selection must be an LI2200File")
+        if template is None:
+            template = source
+
+        selectors = selection[1:]
+        if any(not isinstance(selector, (str, Record)) for selector in selectors):
+            raise TypeError("Record selectors must be strings or Record objects")
+
+        source_records = source.observations.records
+        source_positions = {id(record): index for index, record in enumerate(source_records)}
+
+        for record in locate_records(source, cast(Sequence[RecordSelector], selectors)):
+            composed_records.append(record)
+
+            if not include_associated_g_records or record.record_type == "G":
+                continue
+
+            position = source_positions.get(id(record))
+            if position is None:
+                # Explicit Record objects need not belong to the source file.
+                continue
+            next_position = position + 1
+            if (
+                next_position < len(source_records)
+                and source_records[next_position].record_type == "G"
+            ):
+                composed_records.append(source_records[next_position])
+
+    assert template is not None
+    resequenced_records = tuple(
+        _set_record_seq(record, sequence)
+        for sequence, record in enumerate(composed_records, start=1)
+    )
+    observations = Observations(
+        raw="".join(record.raw for record in resequenced_records),
+        records=resequenced_records,
+    )
+
+    return template.copy(
+        path=None,
+        raw="",
+        observations=observations,
+        trailing=[],
+    )
 
 
 def _record_ids(records: Iterable[Record]) -> set[int]:

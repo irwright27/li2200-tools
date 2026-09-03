@@ -1,6 +1,6 @@
 import pytest
 
-from li2200tools.engine import change_record, g_records_to_crs
+from li2200tools.engine import change_record, compose_file, g_records_to_crs
 from li2200tools.io import write_li2200
 from li2200tools.models import Header, LI2200File, Metadata, Observations, Record, Results, Sensors, Summary
 
@@ -47,6 +47,43 @@ def _g_record(seq, lat, lon):
             "fix_dt": "20260602 19:00:00",
         },
     )
+
+
+def test_compose_file_preserves_requested_order_across_files():
+    file1 = _file([_record("A", 1), _record("A", 2)])
+    file2 = _file([_record("B", 1), _record("B", 2), _record("B", 3)])
+
+    composed = compose_file(
+        (file1, "A2"),
+        (file2, "B1", "B3"),
+        (file1, "A1"),
+    )
+
+    assert composed is not file1
+    assert composed.path is None
+    assert [record.record_type for record in composed.observations.records] == ["A", "B", "B", "A"]
+    assert [record.parsed["seq"] for record in composed.observations.records] == [1, 2, 3, 4]
+
+
+def test_compose_file_can_include_immediately_following_g_records():
+    associated = _g_record(2, 45.0, -123.0)
+    explicit = _g_record(4, 46.0, -122.0)
+    source = _file([
+        _record("A", 1),
+        associated,
+        _record("B", 3),
+        explicit,
+        _record("A", 5),
+    ])
+
+    composed = compose_file(
+        (source, "A1", "G2", "A2"),
+        include_associated_g_records=True,
+    )
+
+    assert [record.record_type for record in composed.observations.records] == ["A", "G", "G", "A"]
+    assert composed.observations.records[1].parsed["lat"] == 45.0
+    assert composed.observations.records[2].parsed["lat"] == 46.0
 
 
 def test_g_records_to_crs_returns_file_with_all_g_coordinates_transformed():
